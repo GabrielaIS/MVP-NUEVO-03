@@ -1,0 +1,608 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Encuentros - Organizador de Eventos</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+    <style>
+        .gradient-header {
+            background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+        }
+        .menu-hamburguesa {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.5);
+            z-index: 40;
+        }
+        .menu-hamburguesa.active {
+            display: block;
+        }
+        .menu-content {
+            position: fixed;
+            top: 0;
+            right: 0;
+            width: 280px;
+            height: 100%;
+            background: white;
+            z-index: 41;
+            transform: translateX(100%);
+            transition: transform 0.3s ease;
+            box-shadow: -4px 0 12px rgba(0,0,0,0.15);
+            overflow-y: auto;
+        }
+        .menu-hamburguesa.active .menu-content {
+            transform: translateX(0);
+        }
+        #mapContainer {
+            height: 300px;
+            border-radius: 12px;
+            margin-bottom: 16px;
+            z-index: 1;
+        }
+        #mapModal {
+            height: 400px;
+            border-radius: 8px;
+            margin-bottom: 12px;
+            z-index: 1;
+        }
+        .evento-card {
+            transition: all 0.3s ease;
+        }
+        .evento-card:hover {
+            box-shadow: 0 4px 12px rgba(16, 185, 129, 0.15);
+        }
+        .amigo-item {
+            transition: all 0.2s ease;
+        }
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.5);
+            z-index: 100;
+            align-items: center;
+            justify-content: center;
+            overflow-y: auto;
+            padding: 20px;
+        }
+        .modal.active {
+            display: flex;
+        }
+        .modal-content {
+            background: white;
+            border-radius: 12px;
+            padding: 24px;
+            max-width: 500px;
+            width: 100%;
+            max-height: 90vh;
+            overflow-y: auto;
+            z-index: 101;
+        }
+        .leaflet-marker-icon {
+            filter: hue-rotate(85deg);
+        }
+        .cursor-pointer-map {
+            cursor: crosshair !important;
+        }
+    </style>
+</head>
+<body class="bg-gradient-to-br from-green-50 to-emerald-50 h-screen overflow-hidden">
+    <div class="h-full flex flex-col bg-white max-w-2xl mx-auto">
+        <!-- Header -->
+        <div class="gradient-header text-white px-6 py-6 flex items-center justify-between shadow-lg">
+            <div>
+                <div class="flex items-center gap-2">
+                    <h1 class="text-2xl font-bold">Encuentros</h1>
+                    <svg class="w-7 h-7" fill="currentColor" viewBox="0 0 24 24">
+                        <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
+                    </svg>
+                </div>
+                <p class="text-emerald-100 text-xs mt-1">Organizador de eventos con amigos</p>
+            </div>
+            <button id="btnMenu" class="w-10 h-10 bg-white bg-opacity-20 rounded-full flex items-center justify-center hover:bg-opacity-30 transition">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/>
+                </svg>
+            </button>
+        </div>
+
+        <!-- Contenido Principal -->
+        <div class="flex-1 overflow-y-auto bg-gradient-to-br from-green-50 to-emerald-50">
+            <div class="p-4">
+                <!-- Mapa en miniatura -->
+                <div id="mapContainer" class="border-2 border-emerald-200 shadow-md"></div>
+
+                <!-- Botón Nueva Evento -->
+                <button id="btnNuevoEvento" class="w-full px-4 py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-medium text-sm transition mb-4">
+                    + Nuevo Evento
+                </button>
+
+                <!-- Contenedor de Eventos -->
+                <div id="eventosContainer" class="space-y-3 mb-4">
+                    <!-- Los eventos se renderizarán aquí -->
+                </div>
+
+                <!-- Mensaje vacío -->
+                <div id="mensajeVacio" class="text-center py-8">
+                    <svg class="w-12 h-12 text-emerald-300 mx-auto mb-3" fill="currentColor" viewBox="0 0 24 24">
+                        <path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V5h14v14zm-5.04-6.71l-2.75 3.54-1.3-1.54-4.51 5.63h12l-3.44-4.63z"/>
+                    </svg>
+                    <p class="text-emerald-600 font-medium text-sm">No hay eventos aún</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal Nuevo Evento -->
+    <div id="modalEvento" class="modal">
+        <div class="modal-content">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-xl font-bold text-emerald-800">Nuevo Evento</h2>
+                <button id="closeModalEvento" class="text-emerald-500 hover:text-emerald-700 text-2xl">&times;</button>
+            </div>
+            
+            <div class="space-y-3">
+                <div>
+                    <label class="text-sm font-medium text-gray-700 block mb-1">Nombre del evento</label>
+                    <input id="inputEventoNombre" type="text" placeholder="Ej: Reunión en la Plaza" class="w-full border-2 border-emerald-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-emerald-600">
+                </div>
+
+                <div>
+                    <label class="text-sm font-medium text-gray-700 block mb-1">Fecha</label>
+                    <input id="inputEventoFecha" type="date" class="w-full border-2 border-emerald-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-emerald-600">
+                </div>
+
+                <div>
+                    <label class="text-sm font-medium text-gray-700 block mb-1">Hora</label>
+                    <input id="inputEventoHora" type="time" class="w-full border-2 border-emerald-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-emerald-600">
+                </div>
+
+                <div>
+                    <label class="text-sm font-medium text-gray-700 block mb-1">Ubicación</label>
+                    <div id="mapModal" class="border-2 border-emerald-300"></div>
+                    <p class="text-xs text-emerald-600 mt-1">📍 Haz clic en el mapa para seleccionar la ubicación</p>
+                    <input id="inputEventoUbicacion" type="text" readonly class="w-full border-2 border-emerald-200 rounded-lg px-3 py-2 text-sm bg-gray-50 mt-2" placeholder="Selecciona en el mapa">
+                </div>
+
+                <div>
+                    <label class="text-sm font-medium text-gray-700 block mb-1">Seleccionar amigos</label>
+                    <div id="amigosCheckboxContainer" class="space-y-2 max-h-32 overflow-y-auto border border-emerald-200 rounded-lg p-2">
+                        <!-- Se rellenarán los amigos aquí -->
+                    </div>
+                </div>
+
+                <div class="flex gap-3 mt-4">
+                    <button id="cancelarEvento" class="flex-1 bg-gray-300 text-gray-800 py-2 rounded-lg font-medium text-sm hover:bg-gray-400 transition">Cancelar</button>
+                    <button id="guardarEvento" class="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white py-2 rounded-lg font-medium text-sm transition">Guardar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal Amigos -->
+    <div id="modalAmigos" class="modal">
+        <div class="modal-content">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-xl font-bold text-emerald-800">Amigos del Grupo</h2>
+                <button id="closeModalAmigos" class="text-emerald-500 hover:text-emerald-700 text-2xl">&times;</button>
+            </div>
+
+            <div class="space-y-3">
+                <div>
+                    <label class="text-sm font-medium text-gray-700 block mb-1">Nombre del amigo</label>
+                    <input id="inputAmigoNombre" type="text" placeholder="Ej: Juan" class="w-full border-2 border-emerald-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-emerald-600">
+                </div>
+
+                <div>
+                    <label class="text-sm font-medium text-gray-700 block mb-1">Teléfono/Contacto</label>
+                    <input id="inputAmigoContacto" type="text" placeholder="Ej: @juanperez o +34123456789" class="w-full border-2 border-emerald-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-emerald-600">
+                </div>
+
+                <button id="btnAgregarAmigo" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white py-2 rounded-lg font-medium text-sm transition">+ Agregar Amigo</button>
+
+                <div class="border-t-2 border-emerald-200 pt-4 mt-4">
+                    <h3 class="font-medium text-gray-800 mb-3 text-sm">Amigos agregados:</h3>
+                    <div id="listaAmigos" class="space-y-2">
+                        <!-- Se mostrarán los amigos aquí -->
+                    </div>
+                </div>
+
+                <button id="closeModalAmigosBottom" class="w-full bg-gray-300 text-gray-800 py-2 rounded-lg font-medium text-sm hover:bg-gray-400 transition mt-4">Cerrar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Menú Hamburguesa -->
+    <div id="menuHamburguesa" class="menu-hamburguesa">
+        <div class="menu-content bg-white">
+            <div class="bg-gradient-to-r from-emerald-600 to-emerald-700 text-white px-6 py-4 flex justify-between items-center">
+                <h2 class="font-bold text-lg">Menú</h2>
+                <button id="closeMenu" class="text-white hover:text-emerald-100 text-2xl">&times;</button>
+            </div>
+            <nav class="p-4 space-y-2">
+                <button id="btnMenuAmigos" class="w-full text-left px-4 py-3 text-emerald-900 hover:bg-emerald-50 rounded-lg font-medium border-b border-emerald-100 flex items-center gap-3 text-sm">
+                    <svg class="w-5 h-5 text-emerald-600" fill="currentColor" viewBox="0 0 24 24">
+                        <path d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.89 1.97 1.74 1.97 2.95V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z"/>
+                    </svg>
+                    Agregar Amigos
+                </button>
+                <a href="notas.html" class="block px-4 py-3 text-emerald-900 hover:bg-emerald-50 rounded-lg font-medium flex items-center gap-3 text-sm">
+                    <svg class="w-5 h-5 text-emerald-600" fill="currentColor" viewBox="0 0 24 24">
+                        <path d="M19 2H5c-1.1 0-2 .9-2 2v18c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm-5 18H7v-2h7v2zm5-4H5V4h14v12z"/>
+                    </svg>
+                    Block de Notas
+                </a>
+            </nav>
+        </div>
+    </div>
+
+    <script>
+        // Elementos del DOM
+        const btnNuevoEvento = document.getElementById('btnNuevoEvento');
+        const btnMenuAmigos = document.getElementById('btnMenuAmigos');
+        const modalEvento = document.getElementById('modalEvento');
+        const modalAmigos = document.getElementById('modalAmigos');
+        const closeModalEvento = document.getElementById('closeModalEvento');
+        const closeModalAmigos = document.getElementById('closeModalAmigos');
+        const closeModalAmigosBottom = document.getElementById('closeModalAmigosBottom');
+        const eventosContainer = document.getElementById('eventosContainer');
+        const mensajeVacio = document.getElementById('mensajeVacio');
+        const btnMenu = document.getElementById('btnMenu');
+        const menuHamburguesa = document.getElementById('menuHamburguesa');
+        const closeMenu = document.getElementById('closeMenu');
+
+        // Datos
+        let eventos = [];
+        let amigos = [];
+        let mapa = null;
+        let mapaModal = null;
+        let marcadores = {};
+        let marcadorTemporal = null;
+        let ubicacionSeleccionada = null;
+
+        // Cargar datos
+        try {
+            eventos = JSON.parse(localStorage.getItem('eventos')) || [];
+            amigos = JSON.parse(localStorage.getItem('amigos')) || [];
+        } catch (e) {
+            eventos = [];
+            amigos = [];
+        }
+
+        // Inicializar mapa principal - Universidad Nacional de Trujillo
+        function inicializarMapa() {
+            if (mapa) mapa.remove();
+            mapa = L.map('mapContainer').setView([-8.1116, -79.0287], 16);
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '© OpenStreetMap',
+                maxZoom: 19
+            }).addTo(mapa);
+            
+            // Agregar marcador de la UNT
+            L.marker([-8.1116, -79.0287]).addTo(mapa)
+                .bindPopup('<strong>Universidad Nacional de Trujillo</strong><br>Trujillo, La Libertad, Perú')
+                .openPopup();
+            
+            actualizarMapa();
+        }
+
+        // Inicializar mapa del modal
+        function inicializarMapaModal() {
+            if (mapaModal) {
+                mapaModal.remove();
+            }
+            
+            mapaModal = L.map('mapModal').setView([-8.1116, -79.0287], 16);
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '© OpenStreetMap',
+                maxZoom: 19
+            }).addTo(mapaModal);
+
+            // Marcador de la UNT como referencia
+            L.marker([-8.1116, -79.0287]).addTo(mapaModal)
+                .bindPopup('<strong>Universidad Nacional de Trujillo</strong>');
+
+            // Evento de clic en el mapa
+            mapaModal.on('click', function(e) {
+                const { lat, lng } = e.latlng;
+                ubicacionSeleccionada = { lat, lng };
+                
+                // Remover marcador temporal anterior
+                if (marcadorTemporal) {
+                    mapaModal.removeLayer(marcadorTemporal);
+                }
+                
+                // Agregar nuevo marcador temporal
+                marcadorTemporal = L.marker([lat, lng], {
+                    icon: L.icon({
+                        iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png',
+                        shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-shadow.png',
+                        iconSize: [25, 41],
+                        iconAnchor: [12, 41],
+                        popupAnchor: [1, -34],
+                        shadowSize: [41, 41]
+                    })
+                }).addTo(mapaModal);
+                
+                marcadorTemporal.bindPopup('📍 Ubicación del evento').openPopup();
+                
+                // Actualizar input
+                document.getElementById('inputEventoUbicacion').value = 
+                    `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
+            });
+
+            // Forzar renderizado del mapa
+            setTimeout(() => {
+                mapaModal.invalidateSize();
+            }, 100);
+        }
+
+        function actualizarMapa() {
+            if (!mapa) return;
+            
+            // Limpiar marcadores anteriores
+            Object.values(marcadores).forEach(m => {
+                if (mapa.hasLayer(m)) {
+                    mapa.removeLayer(m);
+                }
+            });
+            marcadores = {};
+
+            // Agregar marcadores para cada evento
+            eventos.forEach(evento => {
+                if (evento.ubicacion) {
+                    const coords = evento.ubicacion.split(',').map(v => parseFloat(v.trim()));
+                    if (coords.length === 2 && !isNaN(coords[0]) && !isNaN(coords[1])) {
+                        const marker = L.marker([coords[0], coords[1]], {
+                            title: evento.nombre
+                        }).addTo(mapa);
+                        marker.bindPopup(`<strong>${evento.nombre}</strong><br>${evento.fecha} ${evento.hora}`);
+                        marcadores[evento.id] = marker;
+                    }
+                }
+            });
+        }
+
+        function guardarDatos() {
+            try {
+                localStorage.setItem('eventos', JSON.stringify(eventos));
+                localStorage.setItem('amigos', JSON.stringify(amigos));
+            } catch (e) {
+                console.error('Error guardando datos:', e);
+            }
+        }
+
+        function abrirModalEvento() {
+            document.getElementById('inputEventoNombre').value = '';
+            document.getElementById('inputEventoFecha').value = '';
+            document.getElementById('inputEventoHora').value = '';
+            document.getElementById('inputEventoUbicacion').value = '';
+            ubicacionSeleccionada = null;
+            marcadorTemporal = null;
+            
+            // Renderizar amigos con checkboxes
+            const container = document.getElementById('amigosCheckboxContainer');
+            container.innerHTML = '';
+            
+            if (amigos.length === 0) {
+                container.innerHTML = '<p class="text-xs text-gray-500 p-2">No hay amigos agregados aún</p>';
+            } else {
+                amigos.forEach(amigo => {
+                    const div = document.createElement('div');
+                    div.className = 'flex items-center';
+                    div.innerHTML = `
+                        <input type="checkbox" id="amigo_${amigo.id}" class="amigo-checkbox" value="${amigo.id}">
+                        <label for="amigo_${amigo.id}" class="ml-2 text-sm text-gray-700">${amigo.nombre}</label>
+                    `;
+                    container.appendChild(div);
+                });
+            }
+
+            modalEvento.classList.add('active');
+            
+            // Inicializar mapa del modal después de que se muestre
+            setTimeout(() => {
+                inicializarMapaModal();
+            }, 100);
+        }
+
+        function cerrarModalEvento() {
+            modalEvento.classList.remove('active');
+            if (mapaModal) {
+                mapaModal.remove();
+                mapaModal = null;
+            }
+        }
+
+        function cerrarModalAmigos() {
+            modalAmigos.classList.remove('active');
+        }
+
+        function guardarEvento() {
+            const nombre = document.getElementById('inputEventoNombre').value.trim();
+            const fecha = document.getElementById('inputEventoFecha').value;
+            const hora = document.getElementById('inputEventoHora').value;
+            const ubicacion = document.getElementById('inputEventoUbicacion').value.trim();
+
+            if (!nombre || !fecha || !hora || !ubicacion) {
+                alert('Por favor completa todos los campos y selecciona una ubicación en el mapa');
+                return;
+            }
+
+            const amigosSeleccionados = Array.from(document.querySelectorAll('.amigo-checkbox:checked'))
+                .map(cb => parseInt(cb.value));
+
+            const evento = {
+                id: Date.now(),
+                nombre,
+                fecha,
+                hora,
+                ubicacion,
+                amigos: amigosSeleccionados,
+                notificacionEnviada: false
+            };
+
+            eventos.unshift(evento);
+            guardarDatos();
+            cerrarModalEvento();
+            renderizarEventos();
+            actualizarMapa();
+        }
+
+        function eliminarEvento(eventoId) {
+            if (confirm('¿Eliminar este evento?')) {
+                eventos = eventos.filter(e => e.id !== eventoId);
+                guardarDatos();
+                renderizarEventos();
+                actualizarMapa();
+            }
+        }
+
+        function agregarAmigo() {
+            const nombre = document.getElementById('inputAmigoNombre').value.trim();
+            const contacto = document.getElementById('inputAmigoContacto').value.trim();
+
+            if (!nombre || !contacto) {
+                alert('Por favor completa todos los campos');
+                return;
+            }
+
+            const amigo = {
+                id: Date.now(),
+                nombre,
+                contacto
+            };
+
+            amigos.unshift(amigo);
+            guardarDatos();
+            document.getElementById('inputAmigoNombre').value = '';
+            document.getElementById('inputAmigoContacto').value = '';
+            renderizarAmigos();
+        }
+
+        function eliminarAmigo(amigoId) {
+            if (confirm('¿Eliminar este amigo?')) {
+                amigos = amigos.filter(a => a.id !== amigoId);
+                guardarDatos();
+                renderizarAmigos();
+            }
+        }
+
+        function renderizarAmigos() {
+            const lista = document.getElementById('listaAmigos');
+            lista.innerHTML = '';
+
+            if (amigos.length === 0) {
+                lista.innerHTML = '<p class="text-sm text-gray-500 italic">No hay amigos agregados</p>';
+            } else {
+                amigos.forEach(amigo => {
+                    const div = document.createElement('div');
+                    div.className = 'amigo-item bg-emerald-50 border border-emerald-200 rounded-lg p-3';
+                    div.innerHTML = `
+                        <div class="flex justify-between items-start">
+                            <div class="flex-1">
+                                <p class="font-medium text-emerald-900 text-sm">${amigo.nombre}</p>
+                                <p class="text-xs text-gray-600">${amigo.contacto}</p>
+                            </div>
+                            <button onclick="eliminarAmigo(${amigo.id})" class="text-red-500 hover:text-red-700 font-bold">×</button>
+                        </div>
+                    `;
+                    lista.appendChild(div);
+                });
+            }
+        }
+
+        function renderizarEventos() {
+            eventosContainer.innerHTML = '';
+
+            if (eventos.length === 0) {
+                mensajeVacio.classList.remove('hidden');
+            } else {
+                mensajeVacio.classList.add('hidden');
+
+                eventos.forEach(evento => {
+                    const div = document.createElement('div');
+                    div.className = 'evento-card bg-white border-2 border-emerald-200 rounded-xl p-3';
+                    
+                    const amigosTexto = evento.amigos.length > 0 
+                        ? amigos.filter(a => evento.amigos.includes(a.id)).map(a => a.nombre).join(', ')
+                        : 'Sin amigos';
+
+                    div.innerHTML = `
+                        <div class="flex justify-between items-start">
+                            <div class="flex-1 min-w-0">
+                                <p class="font-medium text-emerald-900 text-sm">${evento.nombre}</p>
+                                <p class="text-xs text-gray-600">📅 ${evento.fecha} ${evento.hora}</p>
+                                <p class="text-xs text-gray-600">📍 ${evento.ubicacion}</p>
+                                <p class="text-xs text-emerald-600 truncate">👥 ${amigosTexto}</p>
+                            </div>
+                            <button onclick="eliminarEvento(${evento.id})" class="text-red-500 hover:text-red-700 font-bold ml-2">×</button>
+                        </div>
+                    `;
+                    eventosContainer.appendChild(div);
+                });
+            }
+        }
+
+        // Event Listeners
+        btnNuevoEvento.addEventListener('click', abrirModalEvento);
+        btnMenuAmigos.addEventListener('click', () => {
+            menuHamburguesa.classList.remove('active');
+            renderizarAmigos();
+            modalAmigos.classList.add('active');
+        });
+
+        closeModalEvento.addEventListener('click', cerrarModalEvento);
+        closeModalAmigos.addEventListener('click', cerrarModalAmigos);
+        closeModalAmigosBottom.addEventListener('click', cerrarModalAmigos);
+        
+        document.getElementById('cancelarEvento').addEventListener('click', cerrarModalEvento);
+        document.getElementById('guardarEvento').addEventListener('click', guardarEvento);
+        document.getElementById('btnAgregarAmigo').addEventListener('click', agregarAmigo);
+
+        // Cerrar modales al clickear fuera
+        modalEvento.addEventListener('click', (e) => {
+            if (e.target === modalEvento) cerrarModalEvento();
+        });
+        modalAmigos.addEventListener('click', (e) => {
+            if (e.target === modalAmigos) cerrarModalAmigos();
+        });
+
+        // Menú hamburguesa
+        btnMenu.addEventListener('click', () => {
+            menuHamburguesa.classList.add('active');
+        });
+
+        closeMenu.addEventListener('click', () => {
+            menuHamburguesa.classList.remove('active');
+        });
+
+        menuHamburguesa.addEventListener('click', (e) => {
+            if (e.target === menuHamburguesa) {
+                menuHamburguesa.classList.remove('active');
+            }
+        });
+
+        document.querySelectorAll('.menu-content a').forEach(link => {
+            link.addEventListener('click', () => {
+                menuHamburguesa.classList.remove('active');
+            });
+        });
+
+        // Inicializar
+        inicializarMapa();
+        renderizarEventos();
+        renderizarAmigos();
+    </script>
+</body>
+</html>
