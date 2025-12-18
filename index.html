@@ -52,6 +52,12 @@
             margin-bottom: 12px;
             z-index: 1;
         }
+        #mapModalAmigo {
+            height: 300px;
+            border-radius: 8px;
+            margin-bottom: 12px;
+            z-index: 1;
+        }
         .evento-card {
             transition: all 0.3s ease;
         }
@@ -88,9 +94,6 @@
             overflow-y: auto;
             z-index: 101;
         }
-        .leaflet-marker-icon {
-            filter: hue-rotate(85deg);
-        }
         .cursor-pointer-map {
             cursor: crosshair !important;
         }
@@ -105,10 +108,7 @@
                     <h1 class="text-2xl font-bold">Friend Locator</h1>
                     <svg class="w-7 h-7" viewBox="0 0 24 24" fill="currentColor"
                         xmlns="http://www.w3.org/2000/svg">
-                        <!-- Anillo base -->
                         <path d="M5 20c0-1.66 3.13-3 7-3s7 1.34 7 3-3.13 3-7 3-7-1.34-7-3z"/>
-
-                        <!-- Pin con hueco -->
                         <path fill="currentColor" fill-rule="evenodd" d="M12 2 C7.58 2 4 5.58 4 10 c0 5.25 8 12 8 12 s8-6.75 8-12 c0-4.42-3.58-8-8-8 Z M12 6 a4 4 0 1 1 0 8 a4 4 0 1 1 0-8"/>
                     </svg>
                 </div>
@@ -213,6 +213,13 @@
                     <input id="inputAmigoContacto" type="text" placeholder="Ej: @juanperez o +34123456789" class="w-full border-2 border-emerald-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-emerald-600">
                 </div>
 
+                <div>
+                    <label class="text-sm font-medium text-gray-700 block mb-1">Ubicación actual</label>
+                    <div id="mapModalAmigo" class="border-2 border-emerald-300"></div>
+                    <p class="text-xs text-emerald-600 mt-1">📍 Haz clic en el mapa para ubicar a tu amigo</p>
+                    <input id="inputAmigoUbicacion" type="text" readonly class="w-full border-2 border-emerald-200 rounded-lg px-3 py-2 text-sm bg-gray-50 mt-2" placeholder="Selecciona en el mapa">
+                </div>
+
                 <button id="btnAgregarAmigo" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white py-2 rounded-lg font-medium text-sm transition">+ Agregar Amigo</button>
 
                 <div class="border-t-2 border-emerald-200 pt-4 mt-4">
@@ -265,9 +272,13 @@
         let amigos = [];
         let mapa = null;
         let mapaModal = null;
+        let mapaModalAmigo = null;
         let marcadores = {};
+        let marcadoresAmigos = {};
         let marcadorTemporal = null;
+        let marcadorTemporalAmigo = null;
         let ubicacionSeleccionada = null;
+        let ubicacionAmigoSeleccionada = null;
 
         // Cargar datos
         try {
@@ -295,7 +306,7 @@
             actualizarMapa();
         }
 
-        // Inicializar mapa del modal
+        // Inicializar mapa del modal de eventos
         function inicializarMapaModal() {
             if (mapaModal) {
                 mapaModal.remove();
@@ -346,10 +357,61 @@
             }, 100);
         }
 
+        // Inicializar mapa del modal de amigos
+        function inicializarMapaModalAmigo() {
+            if (mapaModalAmigo) {
+                mapaModalAmigo.remove();
+            }
+            
+            mapaModalAmigo = L.map('mapModalAmigo').setView([-8.114646, -79.039162], 16);
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '© OpenStreetMap',
+                maxZoom: 19
+            }).addTo(mapaModalAmigo);
+
+            // Marcador de la UNT como referencia
+            L.marker([-8.114646, -79.039162]).addTo(mapaModalAmigo)
+                .bindPopup('<strong>Universidad Nacional de Trujillo</strong>');
+
+            // Evento de clic en el mapa
+            mapaModalAmigo.on('click', function(e) {
+                const { lat, lng } = e.latlng;
+                ubicacionAmigoSeleccionada = { lat, lng };
+                
+                // Remover marcador temporal anterior
+                if (marcadorTemporalAmigo) {
+                    mapaModalAmigo.removeLayer(marcadorTemporalAmigo);
+                }
+                
+                // Agregar nuevo marcador temporal con color azul para amigos
+                marcadorTemporalAmigo = L.marker([lat, lng], {
+                    icon: L.icon({
+                        iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-blue.png',
+                        shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-shadow.png',
+                        iconSize: [25, 41],
+                        iconAnchor: [12, 41],
+                        popupAnchor: [1, -34],
+                        shadowSize: [41, 41]
+                    })
+                }).addTo(mapaModalAmigo);
+                
+                marcadorTemporalAmigo.bindPopup('👤 Ubicación del amigo').openPopup();
+                
+                // Actualizar input
+                document.getElementById('inputAmigoUbicacion').value = 
+                    `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
+            });
+
+            // Forzar renderizado del mapa
+            setTimeout(() => {
+                mapaModalAmigo.invalidateSize();
+            }, 100);
+        }
+
         function actualizarMapa() {
             if (!mapa) return;
             
-            // Limpiar marcadores anteriores
+            // Limpiar marcadores anteriores de eventos
             Object.values(marcadores).forEach(m => {
                 if (mapa.hasLayer(m)) {
                     mapa.removeLayer(m);
@@ -357,16 +419,54 @@
             });
             marcadores = {};
 
-            // Agregar marcadores para cada evento
+            // Limpiar marcadores anteriores de amigos
+            Object.values(marcadoresAmigos).forEach(m => {
+                if (mapa.hasLayer(m)) {
+                    mapa.removeLayer(m);
+                }
+            });
+            marcadoresAmigos = {};
+
+            // Agregar marcadores para cada evento (rojos)
             eventos.forEach(evento => {
                 if (evento.ubicacion) {
                     const coords = evento.ubicacion.split(',').map(v => parseFloat(v.trim()));
                     if (coords.length === 2 && !isNaN(coords[0]) && !isNaN(coords[1])) {
                         const marker = L.marker([coords[0], coords[1]], {
-                            title: evento.nombre
+                            title: evento.nombre,
+                            icon: L.icon({
+                                iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png',
+                                shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-shadow.png',
+                                iconSize: [25, 41],
+                                iconAnchor: [12, 41],
+                                popupAnchor: [1, -34],
+                                shadowSize: [41, 41]
+                            })
                         }).addTo(mapa);
-                        marker.bindPopup(`<strong>${evento.nombre}</strong><br>${evento.fecha} ${evento.hora}`);
+                        marker.bindPopup(`<strong>📅 ${evento.nombre}</strong><br>${evento.fecha} ${evento.hora}`);
                         marcadores[evento.id] = marker;
+                    }
+                }
+            });
+
+            // Agregar marcadores para cada amigo (azules)
+            amigos.forEach(amigo => {
+                if (amigo.ubicacion) {
+                    const coords = amigo.ubicacion.split(',').map(v => parseFloat(v.trim()));
+                    if (coords.length === 2 && !isNaN(coords[0]) && !isNaN(coords[1])) {
+                        const marker = L.marker([coords[0], coords[1]], {
+                            title: amigo.nombre,
+                            icon: L.icon({
+                                iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-blue.png',
+                                shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-shadow.png',
+                                iconSize: [25, 41],
+                                iconAnchor: [12, 41],
+                                popupAnchor: [1, -34],
+                                shadowSize: [41, 41]
+                            })
+                        }).addTo(mapa);
+                        marker.bindPopup(`<strong>👤 ${amigo.nombre}</strong><br>📞 ${amigo.contacto}`);
+                        marcadoresAmigos[amigo.id] = marker;
                     }
                 }
             });
@@ -423,8 +523,28 @@
             }
         }
 
+        function abrirModalAmigos() {
+            document.getElementById('inputAmigoNombre').value = '';
+            document.getElementById('inputAmigoContacto').value = '';
+            document.getElementById('inputAmigoUbicacion').value = '';
+            ubicacionAmigoSeleccionada = null;
+            marcadorTemporalAmigo = null;
+            
+            renderizarAmigos();
+            modalAmigos.classList.add('active');
+            
+            // Inicializar mapa del modal después de que se muestre
+            setTimeout(() => {
+                inicializarMapaModalAmigo();
+            }, 100);
+        }
+
         function cerrarModalAmigos() {
             modalAmigos.classList.remove('active');
+            if (mapaModalAmigo) {
+                mapaModalAmigo.remove();
+                mapaModalAmigo = null;
+            }
         }
 
         function guardarEvento() {
@@ -470,23 +590,40 @@
         function agregarAmigo() {
             const nombre = document.getElementById('inputAmigoNombre').value.trim();
             const contacto = document.getElementById('inputAmigoContacto').value.trim();
+            const ubicacion = document.getElementById('inputAmigoUbicacion').value.trim();
 
             if (!nombre || !contacto) {
-                alert('Por favor completa todos los campos');
+                alert('Por favor completa el nombre y contacto');
+                return;
+            }
+
+            if (!ubicacion) {
+                alert('Por favor selecciona la ubicación del amigo en el mapa');
                 return;
             }
 
             const amigo = {
                 id: Date.now(),
                 nombre,
-                contacto
+                contacto,
+                ubicacion
             };
 
             amigos.unshift(amigo);
             guardarDatos();
             document.getElementById('inputAmigoNombre').value = '';
             document.getElementById('inputAmigoContacto').value = '';
+            document.getElementById('inputAmigoUbicacion').value = '';
+            ubicacionAmigoSeleccionada = null;
+            
+            // Limpiar marcador temporal
+            if (marcadorTemporalAmigo && mapaModalAmigo) {
+                mapaModalAmigo.removeLayer(marcadorTemporalAmigo);
+                marcadorTemporalAmigo = null;
+            }
+            
             renderizarAmigos();
+            actualizarMapa();
         }
 
         function eliminarAmigo(amigoId) {
@@ -494,6 +631,7 @@
                 amigos = amigos.filter(a => a.id !== amigoId);
                 guardarDatos();
                 renderizarAmigos();
+                actualizarMapa();
             }
         }
 
@@ -507,11 +645,17 @@
                 amigos.forEach(amigo => {
                     const div = document.createElement('div');
                     div.className = 'amigo-item bg-emerald-50 border border-emerald-200 rounded-lg p-3';
+                    
+                    const ubicacionTexto = amigo.ubicacion 
+                        ? `<p class="text-xs text-gray-500">📍 ${amigo.ubicacion}</p>` 
+                        : '';
+                    
                     div.innerHTML = `
                         <div class="flex justify-between items-start">
                             <div class="flex-1">
                                 <p class="font-medium text-emerald-900 text-sm">${amigo.nombre}</p>
-                                <p class="text-xs text-gray-600">${amigo.contacto}</p>
+                                <p class="text-xs text-gray-600">📞 ${amigo.contacto}</p>
+                                ${ubicacionTexto}
                             </div>
                             <button onclick="eliminarAmigo(${amigo.id})" class="text-red-500 hover:text-red-700 font-bold">×</button>
                         </div>
@@ -557,8 +701,7 @@
         btnNuevoEvento.addEventListener('click', abrirModalEvento);
         btnMenuAmigos.addEventListener('click', () => {
             menuHamburguesa.classList.remove('active');
-            renderizarAmigos();
-            modalAmigos.classList.add('active');
+            abrirModalAmigos();
         });
 
         closeModalEvento.addEventListener('click', cerrarModalEvento);
